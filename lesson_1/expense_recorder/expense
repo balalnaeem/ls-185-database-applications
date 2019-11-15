@@ -1,0 +1,132 @@
+#! /usr/bin/env ruby
+
+require "pg"
+require "io/console"
+
+class ExpenseData
+  def initialize
+    @connection = PG.connect(dbname: "expenses")
+  end
+
+  def list_all_expenses
+    result = @connection.exec("SELECT * FROM expenses")
+    display_count(result)
+    display_table(result)
+  end
+
+  def add_expense(amount, memo)
+    if amount.nil? || memo.nil?
+      return puts "You must provide an amount and memo."
+    end
+
+    sql = "INSERT INTO expenses (amount, memo) VALUES ($1, $2)"
+    @connection.exec_params(sql, ["#{amount}", "#{memo}"])
+  end
+
+  def search(term)
+    sql = "SELECT * FROM expenses WHERE memo ILIKE $1"
+    result = @connection.exec_params(sql, ["%#{term}%"])
+    display_count(result)
+    display_table(result)
+  end
+
+  def delete(id)
+    sql = "SELECT * FROM expenses WHERE id = $1"
+    result = @connection.exec_params(sql, ["#{id}"])
+
+    if result.ntuples == 0
+      puts "There is no expense with the id of #{id}."
+      return
+    end
+
+    @connection.exec_params("DELETE FROM expenses WHERE id = $1", ["#{id}"])
+    puts "The following expense has been deleted."
+    display_table(result)
+  end
+
+  def delete_all
+    puts "This will delete all expenses. Are you sure? (y/n)"
+    response = $stdin.getch
+    return unless response == 'y'
+
+    @connection.exec_params("DELETE FROM expenses")
+    puts "All expenses have been deleted."
+  end
+
+  private
+
+  def display_count(result)
+    if result.ntuples == 0
+      puts "There are no expenses."
+    elsif result.ntuples == 1
+      puts "There is 1 expense."
+    else
+      puts "There are #{result.ntuples} expenses."
+    end
+  end
+
+  def display_table(result)
+    return if result.ntuples == 0
+    result.each do |tuple|
+      columns = [ tuple["id"].rjust(3),
+                  tuple["created_on"].rjust(10),
+                  tuple["amount"].rjust(12),
+                  tuple["memo"] ]
+      puts columns.join(" | ")
+    end
+
+    amount = @connection.exec("SELECT SUM(amount) FROM expenses").first['sum']
+    puts "-" * 50
+    puts "Total". + "#{amount}".rjust(26)
+  end
+end
+
+class CLI
+  def initialize
+    @expense_data = ExpenseData.new
+  end
+
+  def run(argv)
+    command = argv.first
+
+    case command
+    when "list"   then @expense_data.list_all_expenses
+    when "add"    then @expense_data.add_expense(argv[1], argv[2])
+    when "search" then @expense_data.search(argv[1])
+    when "delete" then @expense_data.delete(argv[1])
+    when "clear"  then @expense_data.delete_all
+    else print_info
+    end
+  end
+
+  private
+
+  def print_info
+    info = <<~HEREDOC
+      An expense recording system
+
+      Commands:
+
+      add AMOUNT MEMO [DATE] - record a new expense
+      clear - delete all expenses
+      list - list all expenses
+      delete NUMBER - remove expense with id NUMBER
+      search QUERY - list expenses with a matching memo field
+    HEREDOC
+
+    puts info
+  end
+end
+
+CLI.new.run(ARGV)
+
+
+
+
+
+
+
+
+
+
+
